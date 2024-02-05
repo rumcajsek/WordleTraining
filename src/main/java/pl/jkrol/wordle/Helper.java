@@ -1,13 +1,18 @@
 package pl.jkrol.wordle;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
-import java.util.stream.IntStream;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static java.util.Arrays.stream;
 
 public class Helper {
     public static void main(String[] args) throws PatternLengthOverflowException {
         WordLoader loader = new WordLoader();
+        //WordLoader loader = new WordLoader(Arrays.asList("taunt", "tweed", "tweak"));
         Scanner input = new Scanner(System.in);
         List<String> yellows = new ArrayList<>();
         List<String> grayLetters = new ArrayList<>();
@@ -23,20 +28,20 @@ public class Helper {
         if(!tmp.isEmpty())  {
             yellows = stream(tmp.split("\\s*,\\s*")).toList();
         }
-        List<Character> yellowKeys = IntStream.range(0, yellows.size())
-                .filter(i -> i % 2 == 0)
-                .mapToObj(yellows::get)
-                .map(s -> s.charAt(0))
-                .toList();
-        List<Integer> yellowValues = IntStream.range(0,yellows.size())
-                .filter(i -> i % 2 != 0)
-                .mapToObj(yellows::get)
-                .map(Integer::parseInt)
-                .toList();
-        HashMap<Character,Integer> yellowLetters = IntStream.range(0, Math.min(yellowValues.size(),yellowKeys.size()))
-                        .collect(HashMap::new,
-                                (m,i) -> m.put(yellowKeys.get(i),yellowValues.get(i))
-                                ,HashMap::putAll);
+        HashMap<Character,List<Integer>> yellowLetters = new HashMap<>();
+        for(int i = 0 ; i < yellows.size() ; i++) {
+            var tempKey = yellows.get(i).charAt(0);
+            var tempValue = Integer.parseInt(yellows.get(i+1));
+            if(!yellowLetters.containsKey(tempKey)) {
+                yellowLetters.put(tempKey, Stream.of(tempValue).collect(Collectors.toCollection(ArrayList::new)));
+            }
+            else {
+                var valueSet = yellowLetters.get(tempKey);
+                valueSet.add(tempValue);
+                yellowLetters.put(tempKey,valueSet);
+            }
+            i++;
+        }
 
         System.out.println("Insert all gray letters one after other, e.g. \"abcde\"");
         tmp = input.nextLine();
@@ -45,53 +50,23 @@ public class Helper {
         }
         input.close();
 
+        var before = Instant.now();
         System.out.println("Loader size: " + loader.getListOfWords().size());
         System.out.println("Possible words:");
         List<String> finalGrayLetters = grayLetters;
+        AtomicInteger wordCount = new AtomicInteger();
         loader.getListOfWords().stream()
-                .filter(s -> eliminateGrays(s, finalGrayLetters))
-                .filter(s2 -> checkGreens(s2, greenLetters))
-                .filter(s3 -> checkYellows(s3, yellowLetters))
-                .forEach(System.out::println);
+                .filter(s -> Checker.eliminateGrays(s, finalGrayLetters))
+                .filter(s -> Checker.checkGreens(s, greenLetters))
+                .filter(s -> Checker.checkYellows(s, yellowLetters))
+                .forEach(s -> {
+                    System.out.println(s);
+                    wordCount.incrementAndGet();
+                });
+        System.out.println("Words found: " + wordCount);
+        var after = Instant.now();
+        System.out.println("Duration: " + Duration.between(before,after).toMillis() + " ms");
     }
 
-    public static boolean checkGreens(String word, String pattern) {
-        if(Objects.equals(pattern, "_____")) {
-            return true;
-        }
-        for (int i = 0 ; i < word.length() ; i++) {
-            if(pattern.toLowerCase().charAt(i) != '_' && pattern.toLowerCase().charAt(i) != word.toLowerCase().charAt(i)) {
-                return false;
-            }
-        }
-        return true;
-    }
 
-    public static boolean eliminateGrays(String word, List<String> grays) {
-        if (grays.isEmpty()) {
-            return true;
-        }
-        for(String letter : grays) {
-            if(word.contains(letter)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    public static boolean checkYellows(String word, HashMap<Character,Integer> yellows) {
-        if(yellows.isEmpty()) {
-            return true;
-        }
-        int yellowHitCount = 0;
-        for(int i = 0 ; i < word.length() ; i++) {
-            if(yellows.containsKey(word.charAt(i))) {
-                if(Integer.parseInt(yellows.get(word.charAt(i)).toString()) == (i + 1)) {
-                    return false;
-                }
-                ++yellowHitCount;
-            }
-        }
-        return yellowHitCount == yellows.size();
-    }
 }
